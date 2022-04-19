@@ -38,6 +38,271 @@ If you don't use JSHint (or are using it with a configuration file), you can saf
 
 "use strict"; // Do NOT remove this directive!
 
+const G = (function () {
+	var exports = {
+		ticks: 0,
+		cam: {
+			x: 0.0,
+			y: 0.0,
+			path: [
+				{ x: 0.0, y: 0.0 },
+				{ x: 110.0, y: 10.0 },
+				{ x: 120.0, y: 50.0 },
+				{ x: 70.0, y: 32.0 },
+				{ x: 30.0, y: 30.0 },
+				{ x: 120.0, y: 80.0 },
+				{ x: 105.0, y: 110.0 },
+				{ x: 40.0, y: 60.0 },
+				{ x: 65.0, y: 110.0 },
+				{ x: 10.0, y: 100.0 },
+				{ x: 20.0, y: 70.0 },
+			],
+			pathIndex: 0,
+		},
+		visibleObjects: [],
+		hiddenObjects: [],
+		spyglass: {
+			x: 0.0,
+			y: 0.0,
+		},
+		assets: {
+			spyglassImage: null,
+		},
+
+		tick: () => {
+
+			const camTarget = G.cam.path[G.cam.pathIndex];
+
+			const camDx = camTarget.x - G.cam.x;
+			const camDy = camTarget.y - G.cam.y;
+			const camDist = Math.sqrt(camDx * camDx + camDy * camDy);
+			const camSpeed = 0.2;
+
+			if (camDist < camSpeed) {
+				G.cam.pathIndex = (G.cam.pathIndex + 1) % G.cam.path.length;
+			} else {
+				G.cam.x += camDx / camDist * camSpeed;
+				G.cam.y += camDy / camDist * camSpeed;
+			}
+
+			G.ticks += 1;
+
+			G.render();
+		},
+
+		screenToWorld: (p) => {
+			const worldX = p.x + Math.floor(G.cam.x) - PS.gridSize().width / 2;
+			const worldY = p.y + Math.floor(G.cam.y) - PS.gridSize().height / 2;
+			return { x: worldX, y: worldY };
+		},
+
+		worldToScreen: (p) => {
+			const screenX = p.x - Math.floor(G.cam.x) + PS.gridSize().width / 2;
+			const screenY = p.y - Math.floor(G.cam.y) + PS.gridSize().height / 2;
+			return { x: screenX, y: screenY };
+		},
+
+		distance: (p1, p2) => {
+			const dx = p1.x - p2.x;
+			const dy = p1.y - p2.y;
+
+			return Math.sqrt(dx * dx + dy * dy);
+		},
+
+		isInBounds: (p) => {
+			return p.x >= 0 && p.x < PS.gridSize().width && p.y >= 0 && p.y < PS.gridSize().height;
+		},
+
+		isInSpyglass: (screenPos) => {
+			const dx = G.spyglass.x - Math.floor(screenPos.x);
+			const dy = G.spyglass.y - Math.floor(screenPos.y);
+
+			return Math.abs(dx) <= 2 && Math.abs(dy) <= 2;
+		},
+
+		blendColors: (color1, color2, factor) => {
+			const c1 = PS.unmakeRGB(color1, []);
+			const c2 = PS.unmakeRGB(color2, []);
+
+			return PS.makeRGB(
+				c1[0] + (c2[0] - c1[0]) * factor,
+				c1[1] + (c2[1] - c1[1]) * factor,
+				c1[2] + (c2[2] - c1[2]) * factor
+			);
+		},
+
+		drawSpyglassPixel: (screenPos, color) => {
+			if (G.isInBounds(screenPos) && G.isInSpyglass(screenPos)) {
+				PS.color(screenPos.x, screenPos.y, color);
+			}
+		},
+
+		drawPixel: (screenPos, color) => {
+			if (G.isInBounds(screenPos)) {
+				PS.color(screenPos.x, screenPos.y, color);
+			}
+		},
+
+		getBGTileAt: (p) => {
+			const veryGoodHash = Math.sin(p.x) + p.y;
+			const val = G.badRandom(veryGoodHash) * 12;
+			return PS.makeRGB(0, Math.min(Math.max(val + 127, 0), 255), 0);
+		},
+
+		render: () => {
+			PS.gridPlane(0);
+			for (let screenX = 0; screenX < PS.gridSize().width; screenX++) {
+				for (let screenY = 0; screenY < PS.gridSize().height; screenY++) {
+					const worldPos = G.screenToWorld({ x: screenX, y: screenY });
+
+					PS.color(screenX, screenY, G.getBGTileAt(worldPos));
+				}
+			}
+
+			for (let i in G.visibleObjects) {
+				const obj = G.visibleObjects[i];
+
+				const screenPos = G.worldToScreen(obj);
+
+				switch (obj.type) {
+					case "TEST1":
+						for (let dx = -2; dx <= 2; dx++) {
+							for (let dy = -2; dy <= 2; dy++) {
+								G.drawPixel({ x: screenPos.x + dx, y: screenPos.y + dy }, G.blendColors(PS.COLOR_GREEN, PS.COLOR_BLACK, 0.6));
+							}
+						}
+						break;
+				}
+			}
+
+			const spyglassCenterScreenPos = G.spyglass;
+			for (let dx = -2; dx <= 2; dx++) {
+				for (let dy = -2; dy <= 2; dy++) {
+					const screenPos = { x: spyglassCenterScreenPos.x + dx, y: spyglassCenterScreenPos.y + dy };
+					if (G.isInBounds(screenPos)) {
+						PS.color(screenPos.x, screenPos.y, G.blendColors(PS.color(screenPos.x, screenPos.y, PS.CURRENT), PS.COLOR_CYAN, 0.5));
+					}
+				}
+			}
+
+			for (let i in G.hiddenObjects) {
+				const obj = G.hiddenObjects[i];
+
+				const screenPos = G.worldToScreen(obj);
+
+				switch (obj.type) {
+					case "EGG":
+						G.drawSpyglassPixel(screenPos, PS.COLOR_CYAN);
+						break;
+					case "LEP":
+						G.drawSpyglassPixel(screenPos, PS.COLOR_GREEN);
+						G.drawSpyglassPixel({ x: screenPos.x + 1, y: screenPos.y }, PS.COLOR_GREEN);
+						G.drawSpyglassPixel({ x: screenPos.x - 1, y: screenPos.y }, PS.COLOR_GREEN);
+						G.drawSpyglassPixel({ x: screenPos.x, y: screenPos.y - 1 }, PS.COLOR_GREEN);
+						G.drawSpyglassPixel({ x: screenPos.x, y: screenPos.y + 1 }, PS.COLOR_ORANGE);
+						break;
+				}
+			}
+
+			if (G.assets.spyglassImage !== null) {
+				PS.gridPlane(1);
+				PS.alpha(PS.ALL, PS.ALL, PS.ALPHA_TRANSPARENT);
+				// I think this might technically be against rule 1?
+				// PS.imageBlit(G.assets.spyglassImage, spyglassCenterScreenPos.x - 3, spyglassCenterScreenPos.y - 3);
+			}
+
+			PS.gridRefresh();
+		},
+
+		// a very bad but simple seedable prng
+		// https://stackoverflow.com/a/19303725/8267529
+		badRandom: (seed) => {
+			var x = Math.sin(seed) * 10000;
+			return x - Math.floor(x);
+		},
+
+		populateWorld: () => {
+			outer: for (let i = 0; i < 100; i++) {
+				const x = G.badRandom(i) * 110;
+				const y = G.badRandom(i + 100) * 110;
+
+				// prevent them from being too close together
+				for (let i in G.visibleObjects) {
+					const obj = G.visibleObjects[i];
+					if (G.distance(obj, { x, y }) < 8) {
+						continue outer;
+					}
+				}
+
+				G.visibleObjects.push({
+					x,
+					y,
+					type: "TEST1",
+				});
+				if (PS.random(2) === 1) {
+					if (PS.random(3) > 1) {
+						G.hiddenObjects.push({
+							x,
+							y,
+							type: "EGG",
+						});
+					} else {
+						G.hiddenObjects.push({
+							x,
+							y,
+							type: "LEP",
+						});
+					}
+				}
+			}
+		},
+
+		onClick: (clickScreenPos) => {
+			let closestDistSq = 100000;
+			let closestIndex = null;
+			for (let i in G.hiddenObjects) {
+				const obj = G.hiddenObjects[i];
+
+				const screenPos = G.worldToScreen(obj);
+
+				const dx = clickScreenPos.x - screenPos.x;
+				const dy = clickScreenPos.y - screenPos.y;
+
+				const dstSq = dx * dx + dy * dy;
+
+				if (dstSq < closestDistSq) {
+					closestDistSq = dstSq;
+					closestIndex = i;
+				}
+			}
+
+			if (closestDistSq <= 2.5 * 2.5) {
+				const removedObj = G.hiddenObjects.splice(closestIndex, 1)[0];
+				console.log(removedObj);
+				switch (removedObj.type) {
+					case "EGG":
+
+						const eggCt = G.hiddenObjects.filter(o => o.type === "EGG").length;
+
+						if (eggCt === 0) {
+							PS.audioPlay("fx_tada", { volume: 0.25 });
+						} else {
+							PS.audioPlay("fx_pop", { volume: 0.25 });
+						}
+						break;
+					case "LEP":
+						PS.audioPlay("fx_hoot", { volume: 0.25 });
+						break;
+				}
+
+			}
+
+		},
+	};
+
+	return exports;
+}());
+
 /*
 PS.init( system, options )
 Called once after engine is initialized but before event-polling begins.
@@ -64,7 +329,14 @@ PS.init = function (system, options) {
 	// Uncomment the following code line and change
 	// the x and y parameters as needed.
 
-	// PS.gridSize( 8, 8 );
+	PS.gridSize(32, 32);
+	PS.borderAlpha(PS.ALL, PS.ALL, PS.ALPHA_TRANSPARENT);
+	PS.border(PS.ALL, PS.ALL, 0);
+	PS.gridColor(G.blendColors(PS.COLOR_GREEN, PS.COLOR_BLACK, 0.75));
+	PS.statusText("Egg-sposed");
+	PS.statusColor(PS.COLOR_WHITE);
+
+	PS.imageLoad("image/spyglass.png", (image) => G.assets.spyglassImage = image);
 
 	// This is also a good place to display
 	// your game title or a welcome message
@@ -75,6 +347,10 @@ PS.init = function (system, options) {
 	// PS.statusText( "Game" );
 
 	// Add any other initialization code you need here.
+
+	G.populateWorld();
+
+	PS.timerStart(1, G.tick);
 };
 
 /*
@@ -95,6 +371,7 @@ PS.touch = function (x, y, data, options) {
 
 	// Add code here for mouse clicks/touches
 	// over a bead.
+	G.onClick({ x, y });
 };
 
 /*
@@ -131,6 +408,10 @@ PS.enter = function (x, y, data, options) {
 	// PS.debug( "PS.enter() @ " + x + ", " + y + "\n" );
 
 	// Add code here for when the mouse cursor/touch enters a bead.
+
+	G.spyglass.x = x;
+	G.spyglass.y = y;
+
 };
 
 /*
