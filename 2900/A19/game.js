@@ -19,6 +19,8 @@ GNU Lesser General Public License for more details.
 
 You may have received a copy of the GNU Lesser General Public License
 along with the Perlenspiel devkit. If not, see <http://www.gnu.org/licenses/>.
+
+Cover image created with the use of Canva.com
 */
 
 /*
