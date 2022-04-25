@@ -44,20 +44,23 @@ const G = (function () {
 	var exports = {
 		ticks: 0,
 		cam: {
+			desX: 0.0,
+			desY: 0.0,
 			x: 0.0,
 			y: 0.0,
 			path: [
-				{ x: 0.0, y: 0.0 },
-				{ x: 110.0, y: 10.0 },
-				{ x: 120.0, y: 50.0 },
-				{ x: 70.0, y: 32.0 },
-				{ x: 30.0, y: 30.0 },
-				{ x: 120.0, y: 80.0 },
-				{ x: 105.0, y: 110.0 },
-				{ x: 40.0, y: 60.0 },
-				{ x: 65.0, y: 110.0 },
-				{ x: 10.0, y: 100.0 },
-				{ x: 20.0, y: 70.0 },
+				// this is generated dynamically in populateWorld
+				// { x: 0.0, y: 0.0 },
+				// { x: 110.0, y: 10.0 },
+				// { x: 120.0, y: 50.0 },
+				// { x: 70.0, y: 32.0 },
+				// { x: 30.0, y: 30.0 },
+				// { x: 120.0, y: 80.0 },
+				// { x: 105.0, y: 110.0 },
+				// { x: 40.0, y: 60.0 },
+				// { x: 65.0, y: 110.0 },
+				// { x: 10.0, y: 100.0 },
+				// { x: 20.0, y: 70.0 },
 			],
 			pathIndex: 0,
 		},
@@ -66,28 +69,49 @@ const G = (function () {
 		spyglass: {
 			x: 0.0,
 			y: 0.0,
+			afterimage: []
 		},
 		assets: {
+			lensImage: null,
 			spyglassImage: null,
+			objects: [],
 		},
+		eggs: 0,
 
 		tick: () => {
 
-			const camTarget = G.cam.path[G.cam.pathIndex];
+			G.spyglass.afterimage.push({ x: G.spyglass.x, y: G.spyglass.y });
+			G.spyglass.afterimage = G.spyglass.afterimage.slice(-6);
 
-			const camDx = camTarget.x - G.cam.x;
-			const camDy = camTarget.y - G.cam.y;
-			const camDist = Math.sqrt(camDx * camDx + camDy * camDy);
-			const camSpeed = 0.2;
+			if (G.cam.pathIndex < G.cam.path.length) {
+				const camTarget = G.cam.path[G.cam.pathIndex];
 
-			if (camDist < camSpeed) {
-				G.cam.pathIndex = (G.cam.pathIndex + 1) % G.cam.path.length;
-			} else {
-				G.cam.x += camDx / camDist * camSpeed;
-				G.cam.y += camDy / camDist * camSpeed;
+				const camDx = camTarget.x - G.cam.x;
+				const camDy = camTarget.y - G.cam.y;
+				const camDist = Math.sqrt(camDx * camDx + camDy * camDy);
+				const camSpeed = 0.2;
+
+				if (camDist < camSpeed) {
+					G.cam.pathIndex = G.cam.pathIndex + 1;
+				} else {
+					G.cam.desX += camDx / camDist * camSpeed;
+					G.cam.desY += camDy / camDist * camSpeed;
+				}
+
+				const dx = (G.cam.desX - G.cam.x) * 0.025;
+				const dy = (G.cam.desY - G.cam.y) * 0.025;
+
+				G.cam.x += dx;
+				G.cam.y += dy;
+
+				for (let i = 0; i < G.spyglass.afterimage.length; i++) {
+					G.spyglass.afterimage[i].x -= dx;
+					G.spyglass.afterimage[i].y -= dy;
+				}
 			}
 
 			G.ticks += 1;
+
 
 			G.render();
 		},
@@ -115,11 +139,44 @@ const G = (function () {
 			return p.x >= 0 && p.x < PS.gridSize().width && p.y >= 0 && p.y < PS.gridSize().height;
 		},
 
-		isInSpyglass: (screenPos) => {
-			const dx = G.spyglass.x - Math.floor(screenPos.x);
-			const dy = G.spyglass.y - Math.floor(screenPos.y);
+		inSpyglassAmount: (screenPos) => {
 
-			return Math.abs(dx) <= 2 && Math.abs(dy) <= 2;
+			if (G.assets.lensImage !== null) {
+				const img = G.assets.lensImage;
+
+				const dxFromCenter = G.spyglass.x - Math.floor(screenPos.x);
+				const dyFromCenter = G.spyglass.y - Math.floor(screenPos.y);
+
+				const x = Math.floor(img.width / 2) - dxFromCenter;
+				const y = Math.floor(img.height / 2) - dyFromCenter;
+
+				if (x >= 0 && y >= 0 && x < img.width && y < img.height) {
+					const i = x + y * img.width;
+					const a = img.data[i * 4 + 3];
+					if (a > 0) {
+						return 1.0;
+					}
+				}
+
+				for (let si = G.spyglass.afterimage.length - 1; si >= 0; si--) {
+					const dxFromCenter = G.spyglass.afterimage[si].x - Math.floor(screenPos.x);
+					const dyFromCenter = G.spyglass.afterimage[si].y - Math.floor(screenPos.y);
+
+					const x = Math.floor(img.width / 2) - dxFromCenter;
+					const y = Math.floor(img.height / 2) - dyFromCenter;
+
+					if (x >= 0 && y >= 0 && x < img.width && y < img.height) {
+						const i = x + y * img.width;
+						const a = img.data[i * 4 + 3];
+						if (a > 0) {
+							return 1 / Math.pow(1.5, (G.spyglass.afterimage.length - si));
+						}
+					}
+				}
+
+			}
+
+			return false;
 		},
 
 		blendColors: (color1, color2, factor) => {
@@ -134,21 +191,28 @@ const G = (function () {
 		},
 
 		drawSpyglassPixel: (screenPos, color) => {
-			if (G.isInBounds(screenPos) && G.isInSpyglass(screenPos)) {
-				PS.color(screenPos.x, screenPos.y, color);
+			if (G.isInBounds(screenPos)) {
+				const spyglassAmount = G.inSpyglassAmount(screenPos);
+				if (spyglassAmount > 0) {
+					PS.color(screenPos.x, screenPos.y, G.blendColors(PS.color(screenPos.x, screenPos.y, PS.CURRENT), color, spyglassAmount));
+				}
 			}
 		},
 
-		drawPixel: (screenPos, color) => {
+		drawPixel: (screenPos, color, a = 1.0) => {
 			if (G.isInBounds(screenPos)) {
-				PS.color(screenPos.x, screenPos.y, color);
+				if (a !== 1.0) {
+					PS.color(screenPos.x, screenPos.y, G.blendColors(PS.color(screenPos.x, screenPos.y, PS.CURRENT), color, Math.min(Math.max(a, 0.0), 1.0)));
+				} else {
+					PS.color(screenPos.x, screenPos.y, color);
+				}
 			}
 		},
 
 		getBGTileAt: (p) => {
 			const veryGoodHash = Math.sin(p.x) + p.y;
 			const val = G.badRandom(veryGoodHash) * 12;
-			return PS.makeRGB(0, Math.min(Math.max(val + 127, 0), 255), 0);
+			return PS.makeRGB(val / 2 + 160, Math.min(Math.max(val + 220, 0), 255), 140);
 		},
 
 		render: () => {
@@ -174,15 +238,71 @@ const G = (function () {
 							}
 						}
 						break;
+					default:
+						const img = G.assets.objects[obj.type];
+						if (img !== undefined) {
+
+							for (let y = 0; y < img.height; y++) {
+								for (let x = 0; x < img.width; x++) {
+									const i = x + y * img.width;
+									const r = img.data[i * 4];
+									const g = img.data[i * 4 + 1];
+									const b = img.data[i * 4 + 2];
+									const a = img.data[i * 4 + 3];
+									if (a > 0) {
+										G.drawPixel({ x: screenPos.x + x - img.width / 2, y: screenPos.y + y - img.height / 2 }, PS.makeRGB(r, g, b), a / 255);
+									}
+								}
+							}
+
+							// PS.imageBlit(G.assets.objects[0], screenPos.x, screenPos.y);
+						}
+						break;
 				}
 			}
 
 			const spyglassCenterScreenPos = G.spyglass;
-			for (let dx = -2; dx <= 2; dx++) {
-				for (let dy = -2; dy <= 2; dy++) {
-					const screenPos = { x: spyglassCenterScreenPos.x + dx, y: spyglassCenterScreenPos.y + dy };
-					if (G.isInBounds(screenPos)) {
-						PS.color(screenPos.x, screenPos.y, G.blendColors(PS.color(screenPos.x, screenPos.y, PS.CURRENT), PS.COLOR_CYAN, 0.5));
+			if (G.assets.lensImage !== null) {
+				const img = G.assets.lensImage;
+
+				let drawnPixels = [];
+
+				for (let y = 0; y < G.assets.lensImage.height; y++) {
+					for (let x = 0; x < G.assets.lensImage.width; x++) {
+						const i = x + y * img.width;
+						const r = img.data[i * 4];
+						const g = img.data[i * 4 + 1];
+						const b = img.data[i * 4 + 2];
+						const a = img.data[i * 4 + 3];
+						const screenPos = { x: spyglassCenterScreenPos.x + x - img.width / 2 + 1, y: spyglassCenterScreenPos.y + y - img.height / 2 + 1 };
+						if (a > 0 && G.isInBounds(screenPos)) {
+							PS.color(screenPos.x, screenPos.y, G.blendColors(PS.color(screenPos.x, screenPos.y, PS.CURRENT), PS.makeRGB(r, g, b), a / 255));
+							drawnPixels.push(screenPos);
+						}
+					}
+				}
+
+				for (let si = G.spyglass.afterimage.length - 1; si >= 0; si--) {
+					for (let y = 0; y < G.assets.lensImage.height; y++) {
+						px: for (let x = 0; x < G.assets.lensImage.width; x++) {
+							const i = x + y * img.width;
+							const r = img.data[i * 4];
+							const g = img.data[i * 4 + 1];
+							const b = img.data[i * 4 + 2];
+							const a = img.data[i * 4 + 3] / Math.pow(1.5, (G.spyglass.afterimage.length - si));
+							const screenPos = { x: G.spyglass.afterimage[si].x + x - img.width / 2 + 1, y: G.spyglass.afterimage[si].y + y - img.height / 2 + 1 };
+
+							for (let prevI = 0; prevI < drawnPixels.length; prevI++) {
+								if (drawnPixels[prevI].x == screenPos.x && drawnPixels[prevI].y == screenPos.y) {
+									continue px;
+								}
+							}
+
+							if (a > 0 && G.isInBounds(screenPos)) {
+								PS.color(screenPos.x, screenPos.y, G.blendColors(PS.color(screenPos.x, screenPos.y, PS.CURRENT), PS.makeRGB(r, g, b), a / 255));
+								drawnPixels.push(screenPos);
+							}
+						}
 					}
 				}
 			}
@@ -194,7 +314,8 @@ const G = (function () {
 
 				switch (obj.type) {
 					case "EGG":
-						G.drawSpyglassPixel(screenPos, PS.COLOR_CYAN);
+						G.drawSpyglassPixel(screenPos, PS.COLOR_YELLOW);
+						G.drawSpyglassPixel({ x: screenPos.x, y: screenPos.y }, PS.COLOR_YELLOW);
 						break;
 					case "LEP":
 						G.drawSpyglassPixel(screenPos, PS.COLOR_GREEN);
@@ -213,7 +334,55 @@ const G = (function () {
 				// PS.imageBlit(G.assets.spyglassImage, spyglassCenterScreenPos.x - 3, spyglassCenterScreenPos.y - 3);
 			}
 
+			G.renderHUD();
+
+			PS.gridPlane(0);
 			PS.gridRefresh();
+		},
+
+		renderHUD: () => {
+			PS.gridPlane(2);
+
+			PS.alpha(PS.ALL, PS.ALL, PS.ALPHA_TRANSPARENT);
+
+			let timerLeft = 1.0 - (G.cam.pathIndex / (G.cam.path.length - 1));
+
+			if (G.cam.pathIndex < G.cam.path.length) {
+				if (G.cam.pathIndex > 0) {
+					const dxTotal = G.cam.path[G.cam.pathIndex].x - G.cam.path[G.cam.pathIndex - 1].x;
+					const dyTotal = G.cam.path[G.cam.pathIndex].y - G.cam.path[G.cam.pathIndex - 1].y;
+					const dxNow = G.cam.path[G.cam.pathIndex].x - G.cam.x;
+					const dyNow = G.cam.path[G.cam.pathIndex].y - G.cam.y;
+
+					const dstTotal = Math.sqrt(dxTotal * dxTotal + dyTotal * dyTotal);
+					const dstNow = Math.sqrt(dxNow * dxNow + dyNow * dyNow);
+
+					timerLeft += (dstNow / dstTotal) / (G.cam.path.length);
+				}
+			}
+
+			// const baseColor = G.blendColors(PS.COLOR_GREEN, PS.COLOR_GRAY, 0.5);
+			const baseColor = PS.COLOR_GRAY_DARK;
+			const consumedColor = G.blendColors(PS.COLOR_RED, PS.COLOR_GRAY, 0.5);
+
+			for (let x = 0; x < PS.gridSize().width; x++) {
+				const thru = x / PS.gridSize().width;
+				const factor = Math.min(Math.max((timerLeft - thru) / (1 / PS.gridSize().width), 0.0), 1.0);
+
+				PS.alpha(x, PS.gridSize().height - 1, PS.ALPHA_OPAQUE);
+				PS.color(x, PS.gridSize().height - 1, G.blendColors(consumedColor, baseColor, factor));
+
+				PS.alpha(x, PS.gridSize().height - 2, PS.ALPHA_OPAQUE);
+				PS.color(x, PS.gridSize().height - 2, PS.COLOR_WHITE);
+			}
+
+			const eggColor = 0xAEEEEF;
+			const missingColor = 0xB3B3B3;
+			for (let x = 0; x < PS.gridSize().width; x += 2) {
+				PS.color(x, PS.gridSize().height - 2, G.eggs > (x / 2) ? eggColor : missingColor);
+			}
+
+			PS.gridPlane(0);
 		},
 
 		// a very bad but simple seedable prng
@@ -224,14 +393,14 @@ const G = (function () {
 		},
 
 		populateWorld: () => {
-			outer: for (let i = 0; i < 100; i++) {
+			outer: for (let i = 0; i < 80; i++) {
 				const x = G.badRandom(i) * 110;
 				const y = G.badRandom(i + 100) * 110;
 
 				// prevent them from being too close together
 				for (let i in G.visibleObjects) {
 					const obj = G.visibleObjects[i];
-					if (G.distance(obj, { x, y }) < 8) {
+					if (G.distance(obj, { x, y }) < 12) {
 						continue outer;
 					}
 				}
@@ -239,8 +408,9 @@ const G = (function () {
 				G.visibleObjects.push({
 					x,
 					y,
-					type: "TEST1",
+					type: PS.random(7) - 1,
 				});
+
 				if (PS.random(2) === 1) {
 					if (PS.random(3) > 1) {
 						G.hiddenObjects.push({
@@ -248,15 +418,21 @@ const G = (function () {
 							y,
 							type: "EGG",
 						});
+
+						G.cam.path.push({ x, y });
 					} else {
 						G.hiddenObjects.push({
 							x,
 							y,
 							type: "LEP",
 						});
+
+						G.cam.path.push({ x, y });
 					}
 				}
 			}
+
+			G.shuffleArray(G.cam.path);
 		},
 
 		onClick: (clickScreenPos) => {
@@ -278,28 +454,43 @@ const G = (function () {
 				}
 			}
 
-			if (closestDistSq <= 2.5 * 2.5) {
+			if (closestDistSq <= 4.0 * 4.0) {
 				const removedObj = G.hiddenObjects.splice(closestIndex, 1)[0];
 				console.log(removedObj);
 				switch (removedObj.type) {
 					case "EGG":
+						G.eggs += 1;
 
 						const eggCt = G.hiddenObjects.filter(o => o.type === "EGG").length;
 
 						if (eggCt === 0) {
-							PS.audioPlay("fx_tada", { volume: 0.25 });
+							PS.audioPlay("win", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 						} else {
-							PS.audioPlay("fx_pop", { volume: 0.25 });
+							PS.audioPlay("egg", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 						}
 						break;
 					case "LEP":
-						PS.audioPlay("fx_hoot", { volume: 0.25 });
+						// can't steal if you have no eggs!
+						if (G.eggs > 0) {
+							G.eggs -= 1;
+							PS.audioPlay("lepSteal", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+						}
+
+						PS.audioPlay("lepLaugh", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 						break;
 				}
 
 			}
 
 		},
+
+		// source: https://stackoverflow.com/a/12646864/8267529
+		shuffleArray: array => {
+			for (let i = array.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[array[i], array[j]] = [array[j], array[i]];
+			}
+		}
 	};
 
 	return exports;
@@ -338,7 +529,19 @@ PS.init = function (system, options) {
 	PS.statusText("Egg-sposed");
 	PS.statusColor(PS.COLOR_WHITE);
 
-	PS.imageLoad("image/spyglass.png", (image) => G.assets.spyglassImage = image);
+	// PS.imageLoad("image/spyglass.png", (image) => G.assets.spyglassImage = image);
+	PS.imageLoad("image/lens.png", (image) => G.assets.lensImage = image);
+
+	for (let i = 0; i < 7; i++) {
+		PS.imageLoad("image/obj" + (i + 1) + ".png", image => G.assets.objects[i] = image); // jshint ignore:line
+	}
+
+	PS.audioLoad("background", { fileTypes: ["mp3", "ogg"], path: "audio/", autoplay: true, loop: true, volume: 0.125 });
+	PS.audioLoad("egg", { fileTypes: ["mp3", "ogg"], path: "audio/" });
+	PS.audioLoad("lepLaugh", { fileTypes: ["mp3", "ogg"], path: "audio/" });
+	PS.audioLoad("lepSteal", { fileTypes: ["mp3", "ogg"], path: "audio/" });
+	PS.audioLoad("lose", { fileTypes: ["mp3", "ogg"], path: "audio/" });
+	PS.audioLoad("win", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 
 	// This is also a good place to display
 	// your game title or a welcome message
