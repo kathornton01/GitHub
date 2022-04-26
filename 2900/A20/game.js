@@ -76,7 +76,7 @@ const G = (function () {
 			spyglassImage: null,
 			objects: [],
 		},
-		eggs: 0,
+		eggs: [],
 
 		tick: () => {
 
@@ -314,8 +314,8 @@ const G = (function () {
 
 				switch (obj.type) {
 					case "EGG":
-						G.drawSpyglassPixel(screenPos, PS.COLOR_YELLOW);
-						G.drawSpyglassPixel({ x: screenPos.x, y: screenPos.y }, PS.COLOR_YELLOW);
+						G.drawSpyglassPixel(screenPos, obj.color);
+						G.drawSpyglassPixel({ x: screenPos.x, y: screenPos.y - 1 }, obj.color);
 						break;
 					case "LEP":
 						G.drawSpyglassPixel(screenPos, PS.COLOR_GREEN);
@@ -379,7 +379,7 @@ const G = (function () {
 			const eggColor = 0xAEEEEF;
 			const missingColor = 0xB3B3B3;
 			for (let x = 0; x < PS.gridSize().width; x += 2) {
-				PS.color(x, PS.gridSize().height - 2, G.eggs > (x / 2) ? eggColor : missingColor);
+				PS.color(x, PS.gridSize().height - 2, G.eggs.length > (x / 2) ? G.eggs[x / 2] : missingColor);
 			}
 
 			PS.gridPlane(0);
@@ -393,9 +393,10 @@ const G = (function () {
 		},
 
 		populateWorld: () => {
-			outer: for (let i = 0; i < 80; i++) {
-				const x = G.badRandom(i) * 110;
-				const y = G.badRandom(i + 100) * 110;
+			let numEggs = 0;
+			outer: for (let i = 0; i < 100; i++) {
+				const x = G.badRandom(i) * 150;
+				const y = G.badRandom(i + 100) * 150;
 
 				// prevent them from being too close together
 				for (let i in G.visibleObjects) {
@@ -411,15 +412,18 @@ const G = (function () {
 					type: PS.random(7) - 1,
 				});
 
-				if (PS.random(2) === 1) {
-					if (PS.random(3) > 1) {
+				if (PS.random(2) === 1 || numEggs < 16) {
+					if (PS.random(3) === 1 || numEggs < 16) {
+						const colors = [0xC767EA, 0xE8DA4A, 0xE58A40, 0xE26379];
 						G.hiddenObjects.push({
 							x,
 							y,
 							type: "EGG",
+							color: colors[PS.random(colors.length) - 1],
 						});
 
 						G.cam.path.push({ x, y });
+						numEggs += 1;
 					} else {
 						G.hiddenObjects.push({
 							x,
@@ -427,7 +431,7 @@ const G = (function () {
 							type: "LEP",
 						});
 
-						G.cam.path.push({ x, y });
+						// G.cam.path.push({ x, y });
 					}
 				}
 			}
@@ -459,11 +463,11 @@ const G = (function () {
 				console.log(removedObj);
 				switch (removedObj.type) {
 					case "EGG":
-						G.eggs += 1;
+						G.eggs.push(removedObj.color);
 
 						const eggCt = G.hiddenObjects.filter(o => o.type === "EGG").length;
 
-						if (eggCt === 0) {
+						if (G.eggs.length === 16) {
 							PS.audioPlay("win", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 						} else {
 							PS.audioPlay("egg", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
@@ -472,7 +476,7 @@ const G = (function () {
 					case "LEP":
 						// can't steal if you have no eggs!
 						if (G.eggs > 0) {
-							G.eggs -= 1;
+							G.eggs.pop();
 							PS.audioPlay("lepSteal", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 						}
 
