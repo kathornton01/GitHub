@@ -20,7 +20,17 @@ GNU Lesser General Public License for more details.
 You may have received a copy of the GNU Lesser General Public License
 along with the Perlenspiel devkit. If not, see <http://www.gnu.org/licenses/>.
 
+CREDITS:
 Cover image created with the use of Canva.com
+Egg collection sound: https://freesound.org/people/rhodesmas/sounds/320655/
+Leprechaun laugh: https://freesound.org/people/insanity54/sounds/325462/
+Leprechaun steal: https://freesound.org/people/petenice/sounds/9509/
+Background music: https://pixabay.com/music/solo-piano-alexanders-ragtime-band-live-recorded-piano-music-7934/
+Victory sound: https://freesound.org/people/Fupicat/sounds/521643/
+Lose sound: https://freesound.org/people/TaranP/sounds/362205/
+Chick chirp: https://freesound.org/people/basedMedia/sounds/548096/
+Thud: https://freesound.org/people/hy96/sounds/48170/
+
 */
 
 /*
