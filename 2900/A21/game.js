@@ -113,6 +113,9 @@ const G = (function () {
 
 				if (camDist < camSpeed) {
 					G.cam.pathIndex = G.cam.pathIndex + 1;
+					if (G.cam.pathIndex >= G.cam.path.length && G.eggs.length < 16) {
+						PS.audioPlay("lose", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.5 });
+					}
 				} else {
 					G.cam.desX += camDx / camDist * camSpeed;
 					G.cam.desY += camDy / camDist * camSpeed;
@@ -570,6 +573,17 @@ const G = (function () {
 						break;
 				}
 
+			} else {
+				const cur = PS.color(clickScreenPos.x, clickScreenPos.y, PS.CURRENT);
+				const rgb = PS.unmakeRGB(cur, []);
+				console.log(rgb);
+				//[ 206, 248, 234 ]
+
+				if (Math.abs(rgb[0] - 206) <= 2 && Math.abs(rgb[1] - 248) <= 2 && Math.abs(rgb[2] - 234) <= 2) {
+					PS.audioPlay("chick", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+				} else {
+					PS.audioPlay("thud", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.05 });
+				}
 			}
 
 		},
@@ -632,6 +646,8 @@ PS.init = function (system, options) {
 	PS.audioLoad("lepSteal", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 	PS.audioLoad("lose", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 	PS.audioLoad("win", { fileTypes: ["mp3", "ogg"], path: "audio/" });
+	PS.audioLoad("chick", { fileTypes: ["mp3", "ogg"], path: "audio/" });
+	PS.audioLoad("thud", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 
 	// This is also a good place to display
 	// your game title or a welcome message
