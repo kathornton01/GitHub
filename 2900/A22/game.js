@@ -487,7 +487,7 @@ const G = (function () {
 
 				if (PS.random(2) === 1 || numEggs < 16) {
 					if (PS.random(3) === 1 || numEggs < 16) {
-						const colors = [0xC767EA, 0x56E2E2, 0xEF8C45, 0xE26379, 0x0094FF];
+						const colors = [0xC767EA, 0x56E2E2, 0xEF8C45, 0xF092BB, 0x0094FF, 0x49E58D];
 						G.hiddenObjects.push({
 							x,
 							y,
