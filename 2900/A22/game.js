@@ -58,21 +58,10 @@ const G = (function () {
 			desY: 0.0,
 			x: 0.0,
 			y: 0.0,
-			path: [
-				// this is generated dynamically in populateWorld
-				// { x: 0.0, y: 0.0 },
-				// { x: 110.0, y: 10.0 },
-				// { x: 120.0, y: 50.0 },
-				// { x: 70.0, y: 32.0 },
-				// { x: 30.0, y: 30.0 },
-				// { x: 120.0, y: 80.0 },
-				// { x: 105.0, y: 110.0 },
-				// { x: 40.0, y: 60.0 },
-				// { x: 65.0, y: 110.0 },
-				// { x: 10.0, y: 100.0 },
-				// { x: 20.0, y: 70.0 },
-			],
-			pathIndex: 0,
+			target: {
+				x: 0.0,
+				y: 0.0,
+			}
 		},
 		visibleObjects: [],
 		hiddenObjects: [],
@@ -89,47 +78,72 @@ const G = (function () {
 		eggs: [],
 		lepAnim: null,
 		eggFlash: 0,
+		timeTotal: 7500,
+		timeRemaining: 7500,
 
 		tick: () => {
 
 			G.spyglass.afterimage.push({ x: G.spyglass.x, y: G.spyglass.y });
 			G.spyglass.afterimage = G.spyglass.afterimage.slice(-6);
 
-			if (G.cam.pathIndex < G.cam.path.length) {
-				const camTarget = G.cam.path[G.cam.pathIndex];
+			if (G.timeRemaining > 0) {
+				const timerBefore = G.timeRemaining / G.timeTotal;
 
-				const camDx = camTarget.x - G.cam.x;
-				const camDy = camTarget.y - G.cam.y;
-				const camDist = Math.sqrt(camDx * camDx + camDy * camDy);
+				G.timeRemaining -= 1;
 
-				let slowdown = false;
-				if (G.lepAnim !== null) {
-					if (G.lepAnim.y >= 0) {
-						slowdown = true;
+				if (G.timeRemaining === 0) {
+					if (G.eggs.length < 16) {
+						PS.audioPlay("lose", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 					}
 				}
 
-				let camSpeed = slowdown ? 0.001 : 0.2;
+				const timerAfter = G.timeRemaining / G.timeTotal;
 
-				if (camDist < camSpeed) {
-					G.cam.pathIndex = G.cam.pathIndex + 1;
-					if (G.cam.pathIndex >= G.cam.path.length && G.eggs.length < 16) {
-						PS.audioPlay("lose", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.5 });
-					}
-				} else {
-					G.cam.desX += camDx / camDist * camSpeed;
-					G.cam.desY += camDy / camDist * camSpeed;
+				if (timerBefore >= 1.0 && timerAfter < 1.0) {
+					PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+				} else if (timerBefore > 0.75 && timerAfter <= 0.75) {
+					PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+				} else if (timerBefore > 0.5 && timerAfter <= 0.5) {
+					PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+				} else if (timerBefore > 0.25 && timerAfter <= 0.25) {
+					PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 				}
 
-				const dx = (G.cam.desX - G.cam.x) * (slowdown ? 0.01 : 0.025);
-				const dy = (G.cam.desY - G.cam.y) * (slowdown ? 0.01 : 0.025);
+				if (G.cam.target !== null) {
+					const camTarget = G.cam.target;
 
-				G.cam.x += dx;
-				G.cam.y += dy;
+					const camDx = camTarget.x - G.cam.x;
+					const camDy = camTarget.y - G.cam.y;
+					const camDist = Math.sqrt(camDx * camDx + camDy * camDy);
 
-				for (let i = 0; i < G.spyglass.afterimage.length; i++) {
-					G.spyglass.afterimage[i].x -= dx;
-					G.spyglass.afterimage[i].y -= dy;
+					let slowdown = false;
+					if (G.lepAnim !== null) {
+						if (G.lepAnim.y >= 0) {
+							slowdown = true;
+						}
+					}
+
+					let camSpeed = slowdown ? 0.001 : 0.2;
+
+					if (camDist < camSpeed) {
+						if (G.hiddenObjects.length > 0) {
+							G.cam.target = G.hiddenObjects[PS.random(G.hiddenObjects.length) - 1];
+						}
+					} else {
+						G.cam.desX += camDx / camDist * camSpeed;
+						G.cam.desY += camDy / camDist * camSpeed;
+					}
+
+					const dx = (G.cam.desX - G.cam.x) * (slowdown ? 0.01 : 0.025);
+					const dy = (G.cam.desY - G.cam.y) * (slowdown ? 0.01 : 0.025);
+
+					G.cam.x += dx;
+					G.cam.y += dy;
+
+					for (let i = 0; i < G.spyglass.afterimage.length; i++) {
+						G.spyglass.afterimage[i].x -= dx;
+						G.spyglass.afterimage[i].y -= dy;
+					}
 				}
 			}
 
@@ -408,32 +422,18 @@ const G = (function () {
 
 			PS.alpha(PS.ALL, PS.ALL, PS.ALPHA_TRANSPARENT);
 
-			let timerLeft = 1.0 - (G.cam.pathIndex / (G.cam.path.length - 1));
-
-			if (G.cam.pathIndex < G.cam.path.length) {
-				if (G.cam.pathIndex > 0) {
-					const dxTotal = G.cam.path[G.cam.pathIndex].x - G.cam.path[G.cam.pathIndex - 1].x;
-					const dyTotal = G.cam.path[G.cam.pathIndex].y - G.cam.path[G.cam.pathIndex - 1].y;
-					const dxNow = G.cam.path[G.cam.pathIndex].x - G.cam.x;
-					const dyNow = G.cam.path[G.cam.pathIndex].y - G.cam.y;
-
-					const dstTotal = Math.sqrt(dxTotal * dxTotal + dyTotal * dyTotal);
-					const dstNow = Math.sqrt(dxNow * dxNow + dyNow * dyNow);
-
-					timerLeft += (dstNow / dstTotal) / (G.cam.path.length);
-				}
-			}
+			let timerLeft = G.timeRemaining / G.timeTotal;
 
 			// const baseColor = G.blendColors(PS.COLOR_GREEN, PS.COLOR_GRAY, 0.5);
 			const baseColor = PS.COLOR_GRAY_DARK;
 			const consumedColor = G.blendColors(PS.COLOR_RED, PS.COLOR_GRAY, 0.5);
 
 			for (let x = 0; x < PS.gridSize().width; x++) {
-				const thru = x / PS.gridSize().width;
+				const thru = 1.0 - ((x + 1) / PS.gridSize().width);
 				const factor = Math.min(Math.max((timerLeft - thru) / (1 / PS.gridSize().width), 0.0), 1.0);
 
 				PS.alpha(x, PS.gridSize().height - 1, PS.ALPHA_OPAQUE);
-				PS.color(x, PS.gridSize().height - 1, G.blendColors(consumedColor, baseColor, factor));
+				PS.color(x, PS.gridSize().height - 1, G.blendColors(consumedColor, baseColor, factor % 0.1 > 0.05 ? 1 : factor));
 
 				PS.alpha(x, PS.gridSize().height - 2, PS.ALPHA_OPAQUE);
 				PS.color(x, PS.gridSize().height - 2, PS.COLOR_WHITE);
@@ -495,7 +495,6 @@ const G = (function () {
 							color: colors[PS.random(colors.length) - 1],
 						});
 
-						G.cam.path.push({ x, y });
 						numEggs += 1;
 					} else {
 						G.hiddenObjects.push({
@@ -503,13 +502,9 @@ const G = (function () {
 							y,
 							type: "LEP",
 						});
-
-						// G.cam.path.push({ x, y });
 					}
 				}
 			}
-
-			G.shuffleArray(G.cam.path);
 		},
 
 		onClick: (clickScreenPos) => {
@@ -581,6 +576,8 @@ const G = (function () {
 
 				if (Math.abs(rgb[0] - 206) <= 2 && Math.abs(rgb[1] - 248) <= 2 && Math.abs(rgb[2] - 234) <= 2) {
 					PS.audioPlay("chick", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+				} else if (Math.abs(rgb[0] - 205) <= 2 && Math.abs(rgb[1] - 243) <= 2 && Math.abs(rgb[2] - 243) <= 2) {
+					PS.audioPlay("bunny", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.15 });
 				} else {
 					PS.audioPlay("thud", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.05 });
 				}
@@ -647,7 +644,9 @@ PS.init = function (system, options) {
 	PS.audioLoad("lose", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 	PS.audioLoad("win", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 	PS.audioLoad("chick", { fileTypes: ["mp3", "ogg"], path: "audio/" });
+	PS.audioLoad("bunny", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 	PS.audioLoad("thud", { fileTypes: ["mp3", "ogg"], path: "audio/" });
+	PS.audioLoad("clock", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 
 	// This is also a good place to display
 	// your game title or a welcome message
