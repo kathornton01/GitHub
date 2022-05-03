@@ -58,17 +58,56 @@ const G = (function () {
 	var exports = {
 		ticks: 0,
 		cam: {
-			desX: 0.0,
+			desX: -100.0,
 			desY: 0.0,
-			x: 0.0,
+			x: -100.0,
 			y: 0.0,
 			target: {
 				x: 0.0,
 				y: 0.0,
 			}
 		},
-		visibleObjects: [],
-		hiddenObjects: [],
+		visibleObjects: [
+			{
+				x: -60.0,
+				y: 0.0,
+				type: PS.random(7) - 1,
+			},
+			{
+				x: -30.0,
+				y: 0.0,
+				type: PS.random(7) - 1,
+			},
+
+			{
+				x: -80.0,
+				y: -10.0,
+				type: PS.random(7) - 1,
+			},
+			{
+				x: -40.0,
+				y: -10.0,
+				type: PS.random(7) - 1,
+			},
+			{
+				x: -36.0,
+				y: 10.0,
+				type: PS.random(7) - 1,
+			}
+		],
+		hiddenObjects: [
+			{
+				x: -60.0,
+				y: 0.0,
+				type: "EGG",
+				color: 0xC767EA,
+			},
+			{
+				x: -30.0,
+				y: 0.0,
+				type: "LEP",
+			}
+		],
 		spyglass: {
 			x: 0.0,
 			y: 0.0,
@@ -88,6 +127,7 @@ const G = (function () {
 		timeRemaining: 7500,
 		endScreen: null, // null for none, false for lose, true for win
 		music: null,
+		tutorialStep: 0,
 
 		win: () => {
 			PS.audioPlay("win", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
@@ -109,16 +149,20 @@ const G = (function () {
 			G.spyglass.afterimage = G.spyglass.afterimage.slice(-6);
 
 			if (G.timeRemaining > 0) {
-				if (G.endScreen === null) {
+				if (G.endScreen === null && G.tutorialStep === null) {
+					// update timer
+
 					const timerBefore = G.timeRemaining / G.timeTotal;
 
 					G.timeRemaining -= 1;
 
 					if (G.timeRemaining === 0) {
+						// if we run out of time and don't have enough eggs, show lose screen
 						if (G.eggs.length < 16) {
 							G.lose();
 						}
 					} else {
+						// if it isn't possible to win, show lose screen
 						const remainingHiddenEggs = G.hiddenObjects.filter(o => o.type === "EGG").length;
 						if (G.eggs.length + remainingHiddenEggs < 16) {
 							G.lose();
@@ -127,6 +171,7 @@ const G = (function () {
 
 					const timerAfter = G.timeRemaining / G.timeTotal;
 
+					// play ticking sound at certain points through timer
 					if (timerBefore >= 1.0 && timerAfter < 1.0) {
 						PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 					} else if (timerBefore > 0.75 && timerAfter <= 0.75) {
@@ -139,6 +184,8 @@ const G = (function () {
 				}
 
 				if (G.cam.target !== null) {
+					// update camera
+
 					const camTarget = G.cam.target;
 
 					const camDx = camTarget.x - G.cam.x;
@@ -152,16 +199,26 @@ const G = (function () {
 						}
 					}
 
+					// update camera desired position (unsmoothed)
+
 					let camSpeed = slowdown ? 0.001 : 0.2;
 
 					if (camDist < camSpeed) {
-						if (G.hiddenObjects.length > 0) {
-							G.cam.target = G.hiddenObjects[PS.random(G.hiddenObjects.length) - 1];
+						// reached target
+						if (G.tutorialStep === null) {
+							if (G.hiddenObjects.length > 0) {
+								G.cam.target = G.hiddenObjects[PS.random(G.hiddenObjects.length) - 1];
+							}
+						} else {
+							G.cam.desX = camTarget.x;
+							G.cam.desY = camTarget.y;
 						}
 					} else if (G.endScreen === null) {
 						G.cam.desX += camDx / camDist * camSpeed;
 						G.cam.desY += camDy / camDist * camSpeed;
 					}
+
+					// update camera real position to smoothly follow desired position
 
 					const dx = (G.cam.desX - G.cam.x) * (slowdown ? 0.01 : 0.025);
 					const dy = (G.cam.desY - G.cam.y) * (slowdown ? 0.01 : 0.025);
@@ -536,12 +593,12 @@ const G = (function () {
 
 				if (PS.random(2) === 1 || numEggs < 16) {
 					if (PS.random(3) === 1 || numEggs < 16) {
-						const colors = [0xC767EA, 0x56E2E2, 0xEF8C45, 0xF092BB, 0x0094FF, 0x49E58D];
+						const EGG_COLORS = [0xC767EA, 0x56E2E2, 0xEF8C45, 0xF092BB, 0x0094FF, 0x49E58D];
 						G.hiddenObjects.push({
 							x,
 							y,
 							type: "EGG",
-							color: colors[PS.random(colors.length) - 1],
+							color: EGG_COLORS[PS.random(EGG_COLORS.length) - 1],
 						});
 
 						numEggs += 1;
@@ -579,7 +636,8 @@ const G = (function () {
 
 				if (closestDistSq <= 4.0 * 4.0) {
 					const removedObj = G.hiddenObjects.splice(closestIndex, 1)[0];
-					console.log(removedObj);
+					// console.log(removedObj);
+
 					switch (removedObj.type) {
 						case "EGG":
 							G.eggs.push(removedObj.color);
@@ -590,6 +648,14 @@ const G = (function () {
 							} else {
 								PS.audioPlay("egg", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 							}
+
+							if (G.tutorialStep !== null && G.tutorialStep + 1 < 2) {
+								G.tutorialStep += 1;
+								G.cam.target = G.hiddenObjects[0];
+							} else {
+								G.tutorialStep = null;
+							}
+
 							break;
 						case "LEP":
 							// can't steal if you have no eggs!
@@ -613,6 +679,13 @@ const G = (function () {
 								};
 							}
 
+							if (G.tutorialStep !== null && G.tutorialStep + 1 < 2) {
+								G.tutorialStep += 1;
+								G.cam.target = G.hiddenObjects[0];
+							} else {
+								G.tutorialStep = null;
+							}
+
 							PS.audioPlay("lepLaugh", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 							break;
 					}
@@ -620,8 +693,6 @@ const G = (function () {
 				} else {
 					const cur = PS.color(clickScreenPos.x, clickScreenPos.y, PS.CURRENT);
 					const rgb = PS.unmakeRGB(cur, []);
-					console.log(rgb);
-					//[ 206, 248, 234 ]
 
 					if (Math.abs(rgb[0] - 206) <= 2 && Math.abs(rgb[1] - 248) <= 2 && Math.abs(rgb[2] - 234) <= 2) {
 						PS.audioPlay("chick", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
@@ -634,17 +705,25 @@ const G = (function () {
 			} else {
 				// G.endScreen !== null
 				PS.gridPlane(3);
-				const clickedAlpha = PS.alpha(clickScreenPos.x, clickScreenPos.y, PS.CURRENT);
+				const clickedEndScreenAlpha = PS.alpha(clickScreenPos.x, clickScreenPos.y, PS.CURRENT);
 				PS.gridPlane(0);
+				const clickedGroundColor = PS.color(clickScreenPos.x, clickScreenPos.y, PS.CURRENT);
+				const rgb = PS.unmakeRGB(clickedGroundColor, []);
 
-				if (clickedAlpha !== 0) {
+				if (clickedEndScreenAlpha !== 0) {
 					if (G.endScreen) {
 						PS.audioPlay("egg", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 					} else {
 						PS.audioPlay("lepLaugh", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
 					}
 				} else {
-					PS.audioPlay("thud", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.05 });
+					if (Math.abs(rgb[0] - 206) <= 2 && Math.abs(rgb[1] - 248) <= 2 && Math.abs(rgb[2] - 234) <= 2) {
+						PS.audioPlay("chick", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					} else if (Math.abs(rgb[0] - 205) <= 2 && Math.abs(rgb[1] - 243) <= 2 && Math.abs(rgb[2] - 243) <= 2) {
+						PS.audioPlay("bunny", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.15 });
+					} else {
+						PS.audioPlay("thud", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.05 });
+					}
 				}
 			}
 
@@ -729,6 +808,8 @@ PS.init = function (system, options) {
 	// Add any other initialization code you need here.
 
 	G.populateWorld();
+
+	G.cam.target = G.hiddenObjects[G.tutorialStep];
 
 	PS.timerStart(1, G.tick);
 };
