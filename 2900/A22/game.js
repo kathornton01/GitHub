@@ -78,12 +78,30 @@ const G = (function () {
 			lensImage: null,
 			spyglassImage: null,
 			objects: [],
+			winScreen: [null, null],
+			loseScreen: [null, null],
 		},
 		eggs: [],
 		lepAnim: null,
 		eggFlash: 0,
 		timeTotal: 7500,
 		timeRemaining: 7500,
+		endScreen: null, // null for none, false for lose, true for win
+		music: null,
+
+		win: () => {
+			PS.audioPlay("win", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+			G.endScreen = true;
+
+			PS.audioFade(G.music, PS.CURRENT, 0.0, 1000);
+		},
+
+		lose: () => {
+			PS.audioPlay("lose", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+			G.endScreen = false;
+
+			PS.audioFade(G.music, PS.CURRENT, 0.0, 1000);
+		},
 
 		tick: () => {
 
@@ -91,26 +109,33 @@ const G = (function () {
 			G.spyglass.afterimage = G.spyglass.afterimage.slice(-6);
 
 			if (G.timeRemaining > 0) {
-				const timerBefore = G.timeRemaining / G.timeTotal;
+				if (G.endScreen === null) {
+					const timerBefore = G.timeRemaining / G.timeTotal;
 
-				G.timeRemaining -= 1;
+					G.timeRemaining -= 1;
 
-				if (G.timeRemaining === 0) {
-					if (G.eggs.length < 16) {
-						PS.audioPlay("lose", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					if (G.timeRemaining === 0) {
+						if (G.eggs.length < 16) {
+							G.lose();
+						}
+					} else {
+						const remainingHiddenEggs = G.hiddenObjects.filter(o => o.type === "EGG").length;
+						if (G.eggs.length + remainingHiddenEggs < 16) {
+							G.lose();
+						}
 					}
-				}
 
-				const timerAfter = G.timeRemaining / G.timeTotal;
+					const timerAfter = G.timeRemaining / G.timeTotal;
 
-				if (timerBefore >= 1.0 && timerAfter < 1.0) {
-					PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
-				} else if (timerBefore > 0.75 && timerAfter <= 0.75) {
-					PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
-				} else if (timerBefore > 0.5 && timerAfter <= 0.5) {
-					PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
-				} else if (timerBefore > 0.25 && timerAfter <= 0.25) {
-					PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					if (timerBefore >= 1.0 && timerAfter < 1.0) {
+						PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					} else if (timerBefore > 0.75 && timerAfter <= 0.75) {
+						PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					} else if (timerBefore > 0.5 && timerAfter <= 0.5) {
+						PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					} else if (timerBefore > 0.25 && timerAfter <= 0.25) {
+						PS.audioPlay("clock", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					}
 				}
 
 				if (G.cam.target !== null) {
@@ -133,7 +158,7 @@ const G = (function () {
 						if (G.hiddenObjects.length > 0) {
 							G.cam.target = G.hiddenObjects[PS.random(G.hiddenObjects.length) - 1];
 						}
-					} else {
+					} else if (G.endScreen === null) {
 						G.cam.desX += camDx / camDist * camSpeed;
 						G.cam.desY += camDy / camDist * camSpeed;
 					}
@@ -417,6 +442,27 @@ const G = (function () {
 
 			G.renderHUD();
 
+			if (G.endScreen !== null) {
+				PS.gridPlane(3);
+				PS.alpha(PS.ALL, PS.ALL, PS.ALPHA_TRANSPARENT);
+
+				const imgs = G.endScreen ? G.assets.winScreen : G.assets.loseScreen;
+				const img = imgs[(G.ticks % 30 >= 15) ? 1 : 0];
+
+				for (let y = 0; y < img.height; y++) {
+					for (let x = 0; x < img.width; x++) {
+						const i = x + y * img.width;
+						const r = img.data[i * 4];
+						const g = img.data[i * 4 + 1];
+						const b = img.data[i * 4 + 2];
+						const a = img.data[i * 4 + 3];
+						if (a > 0) {
+							G.drawPixelWithAlpha({ x, y }, PS.makeRGB(r, g, b), a / 255);
+						}
+					}
+				}
+			}
+
 			PS.gridPlane(0);
 			PS.gridRefresh();
 		},
@@ -443,8 +489,7 @@ const G = (function () {
 				PS.color(x, PS.gridSize().height - 2, PS.COLOR_WHITE);
 			}
 
-			const eggColor = 0xAEEEEF;
-			const missingColor = 0xB3B3B3;
+			const missingColor = (G.endScreen !== null && !G.endScreen) ? (G.ticks % 30 >= 15 ? 0xFF6060 : 0xCC4D4D) : 0xB3B3B3;
 			for (let x = 0; x < PS.gridSize().width; x += 2) {
 				PS.color(x, PS.gridSize().height - 2, (G.eggs.length > (x / 2) && !(G.eggs.length - 1 == (x / 2) && G.eggFlash % 8 >= 5)) ? G.eggs[x / 2] : missingColor);
 			}
@@ -512,76 +557,92 @@ const G = (function () {
 		},
 
 		onClick: (clickScreenPos) => {
-			let closestDistSq = 100000;
-			let closestIndex = null;
-			for (let i in G.hiddenObjects) {
-				const obj = G.hiddenObjects[i];
 
-				const screenPos = G.worldToScreen(obj);
+			if (G.endScreen === null) {
+				let closestDistSq = 100000;
+				let closestIndex = null;
+				for (let i in G.hiddenObjects) {
+					const obj = G.hiddenObjects[i];
 
-				const dx = clickScreenPos.x - screenPos.x;
-				const dy = clickScreenPos.y - screenPos.y;
+					const screenPos = G.worldToScreen(obj);
 
-				const dstSq = dx * dx + dy * dy;
+					const dx = clickScreenPos.x - screenPos.x;
+					const dy = clickScreenPos.y - screenPos.y;
 
-				if (dstSq < closestDistSq) {
-					closestDistSq = dstSq;
-					closestIndex = i;
-				}
-			}
+					const dstSq = dx * dx + dy * dy;
 
-			if (closestDistSq <= 4.0 * 4.0) {
-				const removedObj = G.hiddenObjects.splice(closestIndex, 1)[0];
-				console.log(removedObj);
-				switch (removedObj.type) {
-					case "EGG":
-						G.eggs.push(removedObj.color);
-						G.eggFlash = 40;
-
-						const eggCt = G.hiddenObjects.filter(o => o.type === "EGG").length;
-
-						if (G.eggs.length === 16) {
-							PS.audioPlay("win", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
-						} else {
-							PS.audioPlay("egg", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
-						}
-						break;
-					case "LEP":
-						// can't steal if you have no eggs!
-						if (G.eggs.length > 0) {
-							G.lepAnim = {
-								x: G.worldToScreen(removedObj).x,
-								y: G.worldToScreen(removedObj).y,
-								target: {
-									x: G.eggs.length * 2 - 1,
-									y: 30.0,
-								},
-							};
-						} else {
-							G.lepAnim = {
-								x: G.worldToScreen(removedObj).x,
-								y: G.worldToScreen(removedObj).y,
-								target: {
-									x: PS.random(40) - 4,
-									y: -2,
-								},
-							};
-						}
-
-						PS.audioPlay("lepLaugh", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
-						break;
+					if (dstSq < closestDistSq) {
+						closestDistSq = dstSq;
+						closestIndex = i;
+					}
 				}
 
+				if (closestDistSq <= 4.0 * 4.0) {
+					const removedObj = G.hiddenObjects.splice(closestIndex, 1)[0];
+					console.log(removedObj);
+					switch (removedObj.type) {
+						case "EGG":
+							G.eggs.push(removedObj.color);
+							G.eggFlash = 40;
+
+							if (G.eggs.length === 16) {
+								G.win();
+							} else {
+								PS.audioPlay("egg", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+							}
+							break;
+						case "LEP":
+							// can't steal if you have no eggs!
+							if (G.eggs.length > 0) {
+								G.lepAnim = {
+									x: G.worldToScreen(removedObj).x,
+									y: G.worldToScreen(removedObj).y,
+									target: {
+										x: G.eggs.length * 2 - 1,
+										y: 30.0,
+									},
+								};
+							} else {
+								G.lepAnim = {
+									x: G.worldToScreen(removedObj).x,
+									y: G.worldToScreen(removedObj).y,
+									target: {
+										x: PS.random(40) - 4,
+										y: -2,
+									},
+								};
+							}
+
+							PS.audioPlay("lepLaugh", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+							break;
+					}
+
+				} else {
+					const cur = PS.color(clickScreenPos.x, clickScreenPos.y, PS.CURRENT);
+					const rgb = PS.unmakeRGB(cur, []);
+					console.log(rgb);
+					//[ 206, 248, 234 ]
+
+					if (Math.abs(rgb[0] - 206) <= 2 && Math.abs(rgb[1] - 248) <= 2 && Math.abs(rgb[2] - 234) <= 2) {
+						PS.audioPlay("chick", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					} else if (Math.abs(rgb[0] - 205) <= 2 && Math.abs(rgb[1] - 243) <= 2 && Math.abs(rgb[2] - 243) <= 2) {
+						PS.audioPlay("bunny", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.15 });
+					} else {
+						PS.audioPlay("thud", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.05 });
+					}
+				}
 			} else {
-				const cur = PS.color(clickScreenPos.x, clickScreenPos.y, PS.CURRENT);
-				const rgb = PS.unmakeRGB(cur, []);
-				console.log(rgb);
-				//[ 206, 248, 234 ]
+				// G.endScreen !== null
+				PS.gridPlane(3);
+				const clickedAlpha = PS.alpha(clickScreenPos.x, clickScreenPos.y, PS.CURRENT);
+				PS.gridPlane(0);
 
-				if (Math.abs(rgb[0] - 206) <= 2 && Math.abs(rgb[1] - 248) <= 2 && Math.abs(rgb[2] - 234) <= 2) {
-					PS.audioPlay("chick", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
-				} else if (Math.abs(rgb[0] - 205) <= 2 && Math.abs(rgb[1] - 243) <= 2 && Math.abs(rgb[2] - 243) <= 2) {
-					PS.audioPlay("bunny", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.15 });
+				if (clickedAlpha !== 0) {
+					if (G.endScreen) {
+						PS.audioPlay("egg", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					} else {
+						PS.audioPlay("lepLaugh", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.25 });
+					}
 				} else {
 					PS.audioPlay("thud", { fileTypes: ["mp3", "ogg"], path: "audio/", volume: 0.05 });
 				}
@@ -641,7 +702,12 @@ PS.init = function (system, options) {
 		PS.imageLoad("image/obj" + (i + 1) + ".png", image => G.assets.objects[i] = image); // jshint ignore:line
 	}
 
-	PS.audioLoad("background", { fileTypes: ["mp3", "ogg"], path: "audio/", autoplay: true, loop: true, volume: 0.125 });
+	PS.imageLoad("image/trophyFrame1.png", (image) => G.assets.winScreen[0] = image);
+	PS.imageLoad("image/trophyFrame2.png", (image) => G.assets.winScreen[1] = image);
+	PS.imageLoad("image/leprechaunFrame1.png", (image) => G.assets.loseScreen[0] = image);
+	PS.imageLoad("image/leprechaunFrame2.png", (image) => G.assets.loseScreen[1] = image);
+
+	PS.audioLoad("background", { fileTypes: ["mp3", "ogg"], path: "audio/", autoplay: true, loop: true, volume: 0.125, onLoad: (ctx) => G.music = ctx.channel });
 	PS.audioLoad("egg", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 	PS.audioLoad("lepLaugh", { fileTypes: ["mp3", "ogg"], path: "audio/" });
 	PS.audioLoad("lepSteal", { fileTypes: ["mp3", "ogg"], path: "audio/" });
